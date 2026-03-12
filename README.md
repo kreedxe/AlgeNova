@@ -60,10 +60,15 @@ npm start
 │  │  ├─ healthController.js
 │  │  └─ mathController.js        # HTTP glue only (uses services)
 │  ├─ services/
-│  │  └─ mathService.js           # heavy math logic
+│  │  ├─ mathService.js           # orchestration + public API
+│  │  ├─ mathHelpers.js           # shared math/latex helpers
+│  │  ├─ equationService.js       # equation solving logic
+│  │  ├─ expressionService.js     # expression evaluation logic
+│  │  └─ calculusService.js       # derivatives & integrals
 │  ├─ routes/
 │  │  └─ mathRoutes.js            # /api/math router
 │  ├─ middlewares/
+│  │  ├─ requestContext.js        # request id + timing headers
 │  │  ├─ notFound.js              # 404 -> error
 │  │  └─ errorHandler.js          # error -> JSON + logging
 │  └─ utils/
@@ -86,11 +91,12 @@ For errors, responses are JSON:
 { "error": "Not Found" }
 ```
 
-Status codes:
+Status codes and headers:
 
 - `404` for unknown routes
 - `400` for invalid input on endpoints like math solver
 - `500` for unexpected server errors
+- Every response includes `X-Request-Id` and `X-Response-Time-ms` headers for tracing.
 
 ## Endpoints
 
@@ -161,7 +167,7 @@ Returns supported operations and example inputs.
 
 #### `POST /api/math/solve`
 
-Solves a math input and returns a step-by-step JSON solution.
+General solver. Detects the formula type (equation, expression, derivative, integral) and returns a step-by-step JSON solution.
 
 **Request body**:
 
@@ -219,6 +225,97 @@ or:
 }
 ```
 
+#### `POST /api/math/solve/equation`
+
+Solve **only equations**; returns 400 if the formula is not classified as an equation.
+
+#### `POST /api/math/solve/expression`
+
+Evaluate **only expressions**.
+
+#### `POST /api/math/solve/derivative`
+
+Solve **only derivatives**.
+
+#### `POST /api/math/solve/integral`
+
+Solve **only integrals**.
+
+Each typed endpoint accepts the same request body as `/api/math/solve`:
+
+```json
+{ "formula": "d/dx(x^2 + 3x)" }
+```
+
+#### `POST /api/math/validate`
+
+Validate and classify a formula without relying on the frontend to parse it.
+
+**Request body**:
+
+```json
+{ "formula": "2x + 5 = 13" }
+```
+
+**Response (200)**:
+
+```json
+{
+  "originalFormula": "2x + 5 = 13",
+  "parsedFormula": "2x + 5 = 13",
+  "type": "equation",
+  "isSpecial": false,
+  "valid": true,
+  "error": null
+}
+```
+
+#### `POST /api/math/solve/batch`
+
+Solve multiple formulas in a single request.
+
+**Request body**:
+
+```json
+{
+  "formulas": [
+    "2x + 5 = 13",
+    "d/dx(x^2 + 3x)",
+    "∫x^2"
+  ]
+}
+```
+
+**Response (200)**:
+
+```json
+{
+  "count": 3,
+  "results": [
+    {
+      "index": 0,
+      "formula": "2x + 5 = 13",
+      "ok": true,
+      "solution": { "...": "..." }
+    },
+    {
+      "index": 1,
+      "formula": "d/dx(x^2 + 3x)",
+      "ok": true,
+      "solution": { "...": "..." }
+    },
+    {
+      "index": 2,
+      "formula": "∫x^2",
+      "ok": true,
+      "solution": { "...": "..." }
+    }
+  ]
+}
+```
+
+If solving a particular formula fails, `ok` is `false` and `error` is populated for that entry.
+
 ## Curl examples
 
 Health:
@@ -234,12 +331,28 @@ Math help:
 curl http://localhost:3000/api/math/help
 ```
 
-Solve:
+Solve (auto-detect type):
 
 ```bash
 curl -X POST http://localhost:3000/api/math/solve \
   -H "Content-Type: application/json" \
   -d '{"formula":"2x + 5 = 13"}'
+```
+
+Solve derivative only:
+
+```bash
+curl -X POST http://localhost:3000/api/math/solve/derivative \
+  -H "Content-Type: application/json" \
+  -d '{"formula":"d/dx(x^2 + 3x)"}'
+```
+
+Batch solve:
+
+```bash
+curl -X POST http://localhost:3000/api/math/solve/batch \
+  -H "Content-Type: application/json" \
+  -d '{"formulas":["2x + 5 = 13","d/dx(x^2 + 3x)","∫x^2"]}'
 ```
 
 ## Notes
