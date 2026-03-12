@@ -19,6 +19,8 @@ const toLatex = (expr) => {
 
 const cleanOutput = (str) => str.replace(/\*/g, '').replace(/\s+/g, ' ').trim();
 
+const stripBrackets = (str) => (typeof str === 'string' ? str.replace(/\[|\]/g, '') : str);
+
 const determineFormulaType = (formula) => {
   if (formula.includes('=') && !formula.includes('∫') && !formula.includes('d/dx')) {
     return 'equation';
@@ -286,14 +288,14 @@ const solveEquation = async (formula, solution) => {
         answers = nerdSolution
           .replace(/^[[]|[]]$/g, '')
           .split(',')
-          .map((s) => cleanOutput(s))
+          .map((s) => cleanOutput(stripBrackets(s)))
           .filter((s) => s.length > 0);
       } catch (innerErr) {
         const nerdSolution2 = nerdamer(`solve((${leftSide})-(${rightSide}), x)`).toString();
         answers = nerdSolution2
           .replace(/^[[]|[]]$/g, '')
           .split(',')
-          .map((s) => cleanOutput(s))
+          .map((s) => cleanOutput(stripBrackets(s)))
           .filter((s) => s.length > 0);
       }
 
@@ -310,7 +312,7 @@ const solveEquation = async (formula, solution) => {
           answers = numeric
             .replace(/^[[]|[]]$/g, '')
             .split(',')
-            .map((s) => cleanOutput(s));
+            .map((s) => cleanOutput(stripBrackets(s)));
         }
       }
 
@@ -336,7 +338,7 @@ const solveEquation = async (formula, solution) => {
       const answers = nerdSolution
         .replace(/^[[]|[]]$/g, '')
         .split(',')
-        .map((s) => cleanOutput(s))
+        .map((s) => cleanOutput(stripBrackets(s)))
         .filter((s) => s.length > 0);
 
       solution.finalAnswer = answers.map((a) => `x = ${a}`);
