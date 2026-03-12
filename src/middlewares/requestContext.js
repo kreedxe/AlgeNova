@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const logger = require('../logger');
 
 const requestContext = (req, res, next) => {
   const id = randomUUID();
@@ -12,7 +13,14 @@ const requestContext = (req, res, next) => {
   res.on('finish', () => {
     const finishedAt = process.hrtime.bigint();
     const durationMs = Number(finishedAt - startedAt) / 1e6;
-    res.setHeader('X-Response-Time-ms', durationMs.toFixed(2));
+
+    logger.info('request completed', {
+      requestId: id,
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Number(durationMs.toFixed(2)),
+    });
   });
 
   next();
