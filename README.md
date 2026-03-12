@@ -1,2 +1,251 @@
-# AlgeNova
-Backend server of test taking platform AlgeNova
+# AlgeNova Backend
+
+Backend server for the AlgeNova test-taking platform.
+
+## Tech stack
+
+- **Runtime**: Node.js (CommonJS, JavaScript-only)
+- **Web framework**: Express
+- **Logging**: `morgan` (HTTP logs) + custom `src/logger.js`
+- **Config**: `.env` via `dotenv`
+- **Math engine**: `mathjs` + `nerdamer`
+
+## Requirements
+
+- **Node.js**: \(>= 18\)
+
+## Getting started
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create/update environment variables:
+
+- Create `.env` in project root (already included in this repo for local dev):
+
+```bash
+NODE_ENV=development
+PORT=3000
+```
+
+Run in development (auto-restart):
+
+```bash
+npm run dev
+```
+
+Run in production:
+
+```bash
+npm start
+```
+
+## NPM scripts
+
+- **`npm start`**: starts server via `node src/server.js`
+- **`npm run dev`**: starts server via `nodemon src/server.js`
+
+## Project structure
+
+```text
+.
+├─ server.js                      # thin bootstrapper (requires src/server)
+├─ src/
+│  ├─ server.js                   # express app wiring + listen()
+│  ├─ config.js                   # dotenv + env/port exports
+│  ├─ logger.js                   # small structured logger
+│  ├─ controllers/
+│  │  ├─ healthController.js
+│  │  └─ mathController.js        # HTTP glue only (uses services)
+│  ├─ services/
+│  │  └─ mathService.js           # heavy math logic
+│  ├─ routes/
+│  │  └─ mathRoutes.js            # /api/math router
+│  ├─ middlewares/
+│  │  ├─ notFound.js              # 404 -> error
+│  │  └─ errorHandler.js          # error -> JSON + logging
+│  └─ utils/
+│     └─ parser.js                # parseInput helper
+└─ sampleCode/
+   └─ mathController.js           # original reference implementation
+```
+
+## API base URL
+
+By default the server listens on:
+
+- `http://localhost:3000`
+
+## Response conventions
+
+### Errors
+
+For errors, responses are JSON:
+
+```json
+{ "error": "Not Found" }
+```
+
+Status codes:
+
+- `404` for unknown routes
+- `400` for invalid input on endpoints like math solver
+- `500` for unexpected server errors
+
+## Endpoints
+
+### Health
+
+#### `GET /health`
+
+Liveness probe.
+
+**Response (200)**:
+
+```json
+{
+  "status": "ok",
+  "env": "development",
+  "uptime": 12.345,
+  "timestamp": "2026-03-12T00:00:00.000Z"
+}
+```
+
+#### `GET /health/ready`
+
+Readiness probe.
+
+**Response (200)**:
+
+```json
+{
+  "status": "ready",
+  "env": "development",
+  "uptime": 12.345,
+  "timestamp": "2026-03-12T00:00:00.000Z"
+}
+```
+
+### Math API
+
+All math routes are under:
+
+- **Base path**: `/api/math`
+
+#### `GET /api/math/help`
+
+Returns supported operations and example inputs.
+
+**Response (200)**:
+
+```json
+{
+  "supportedOperations": [
+    "Linear, quadratic, polynomial equations",
+    "Equations with sqrt, log, sin, cos, tan",
+    "Expression evaluation (simplify + calculate)",
+    "Derivatives (d/dx)",
+    "Integrals (basic antiderivative)"
+  ],
+  "examples": [
+    { "type": "Linear Equation", "input": "2x + 5 = 13" },
+    { "type": "Quadratic Equation", "input": "x^2 - 4 = 0" },
+    { "type": "Square Root Equation", "input": "sqrt(x+4) = 6" },
+    { "type": "Logarithmic Equation", "input": "log(x) = 2" },
+    { "type": "Trigonometric Equation", "input": "sin(x) = 0.5" },
+    { "type": "Derivative", "input": "d/dx(x^2 + 3x)" },
+    { "type": "Integral", "input": "∫x^2" }
+  ]
+}
+```
+
+#### `POST /api/math/solve`
+
+Solves a math input and returns a step-by-step JSON solution.
+
+**Request body**:
+
+```json
+{ "formula": "2x + 5 = 13" }
+```
+
+**Response (200)** (shape overview):
+
+```json
+{
+  "originalFormula": "2x + 5 = 13",
+  "parsedFormula": "(2x + 5) = 13",
+  "type": "equation",
+  "explanation": "…",
+  "steps": [
+    {
+      "step": 1,
+      "description": "Original equation",
+      "expression": "2x + 5 = 13",
+      "expressionLatex": "…",
+      "explanation": "…"
+    }
+  ],
+  "finalAnswer": ["x = 4"],
+  "finalAnswerLatex": ["x = 4"],
+  "verification": [
+    {
+      "solution": "x = 4",
+      "solutionLatex": "x = 4",
+      "leftSide": "2x + 5 → 13",
+      "rightSide": "13 → 13",
+      "isCorrect": true
+    }
+  ]
+}
+```
+
+**Response (400)** (missing or invalid input):
+
+```json
+{
+  "error": "No formula provided. Please provide a mathematical expression to solve.",
+  "example": { "formula": "2x + 5 = 13" }
+}
+```
+
+or:
+
+```json
+{
+  "error": "Invalid or unsupported formula.",
+  "details": "…",
+  "formula": "..."
+}
+```
+
+## Curl examples
+
+Health:
+
+```bash
+curl http://localhost:3000/health
+curl http://localhost:3000/health/ready
+```
+
+Math help:
+
+```bash
+curl http://localhost:3000/api/math/help
+```
+
+Solve:
+
+```bash
+curl -X POST http://localhost:3000/api/math/solve \
+  -H "Content-Type: application/json" \
+  -d '{"formula":"2x + 5 = 13"}'
+```
+
+## Notes
+
+- This project is intentionally **CommonJS** and **JavaScript-only**.
+- If you want to expand math features, prefer adding new logic in `src/services/` and keep controllers thin.
