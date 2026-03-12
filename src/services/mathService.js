@@ -439,7 +439,7 @@ const solveDerivative = async (formula, solution) => {
     });
 
     const deriv = nerdamer(`diff(${func}, x)`).toString();
-    const cleanedDeriv = cleanOutput(deriv);
+    const cleanedDeriv = cleanOutput(stripBrackets(deriv));
 
     solution.steps.push({
       step: 2,
@@ -511,7 +511,7 @@ const solveIntegral = async (formula, solution) => {
     }
 
     const integral = nerdamer(`integrate(${func}, x)`).toString();
-    const cleanedIntegral = cleanOutput(integral);
+    const cleanedIntegral = cleanOutput(stripBrackets(integral));
 
     solution.steps.push({
       step: solution.steps.length + 1,
