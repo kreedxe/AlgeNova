@@ -46,13 +46,12 @@ npm start
 ## NPM scripts
 
 - **`npm start`**: starts server via `node src/server.js`
-- **`npm run dev`**: starts server via `nodemon src/server.js`
+- **`npm run dev`**: starts server via `node src/server.js` (same as start, adjust to nodemon if you prefer auto-reload)
 
 ## Project structure
 
 ```text
 .
-├─ server.js                      # thin bootstrapper (requires src/server)
 ├─ src/
 │  ├─ server.js                   # express app wiring + listen()
 │  ├─ config.js                   # dotenv + env/port exports
@@ -69,8 +68,6 @@ npm start
 │  │  └─ errorHandler.js          # error -> JSON + logging
 │  └─ utils/
 │     └─ parser.js                # parseInput helper
-└─ sampleCode/
-   └─ mathController.js           # original reference implementation
 ```
 
 ## API base URL
