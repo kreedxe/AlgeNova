@@ -9,10 +9,55 @@ const { parseInput } = require('../utils/parser');
 
 const math = create(all);
 
+const latexCache = new Map();
+const LATEX_CACHE_MAX = 500;
+const getCachedLatex = (key) => {
+  const v = latexCache.get(key);
+  if (v !== undefined) {
+    // refresh LRU-ish
+    latexCache.delete(key);
+    latexCache.set(key, v);
+  }
+  return v;
+};
+const setCachedLatex = (key, value) => {
+  latexCache.set(key, value);
+  if (latexCache.size > LATEX_CACHE_MAX) {
+    const firstKey = latexCache.keys().next().value;
+    if (firstKey !== undefined) latexCache.delete(firstKey);
+  }
+};
+
 const toLatex = (expr) => {
+  if (typeof expr === 'string') {
+    const cached = getCachedLatex(expr);
+    if (cached !== undefined) return cached;
+  }
+
   try {
-    return math.parse(expr).toTex({ parenthesis: 'keep', implicit: 'show' });
+    const tex = math.parse(expr).toTex({ parenthesis: 'keep', implicit: 'show' });
+    if (typeof expr === 'string') setCachedLatex(expr, tex);
+    return tex;
   } catch {
+    // If it's an equation, try converting each side separately.
+    // This avoids returning non-LaTeX strings like "(x^2-4x+3)-(0)=0".
+    try {
+      if (typeof expr === 'string' && expr.includes('=')) {
+        const parts = expr.split('=');
+        if (parts.length >= 2) {
+          const leftRaw = parts[0].trim();
+          const rightRaw = parts.slice(1).join('=').trim();
+          const leftTex = math.parse(leftRaw).toTex({ parenthesis: 'keep', implicit: 'show' });
+          const rightTex = math.parse(rightRaw).toTex({ parenthesis: 'keep', implicit: 'show' });
+          const tex = `${leftTex} = ${rightTex}`;
+          setCachedLatex(expr, tex);
+          return tex;
+        }
+      }
+    } catch {
+      // fall through
+    }
+
     return expr;
   }
 };
@@ -57,23 +102,46 @@ const verifyEquationSolution = (leftSide, rightSide, solutions) => {
   const verifications = [];
   const list = Array.isArray(solutions) ? solutions : [solutions];
 
+  const normalizeForMathJs = (s) => {
+    if (typeof s !== 'string') return s;
+    let out = s;
+    // nerdamer sometimes uses isqrt(n) to mean i*sqrt(n)
+    out = out.replace(/isqrt\s*\(\s*([^)]+?)\s*\)/g, 'i*sqrt($1)');
+    // common constants
+    out = out.replace(/π/g, 'pi');
+    return out;
+  };
+
+  const nearlyEqual = (a, b) => {
+    try {
+      // Works for numbers and Complex
+      const diff = math.subtract(a, b);
+      const mag = math.abs(diff);
+      return typeof mag === 'number' && mag < 1e-10;
+    } catch {
+      return false;
+    }
+  };
+
   list.forEach((sol) => {
     try {
       let cleanSol = sol.replace(/^x\s*=\s*/, '').trim();
-      cleanSol = cleanSol.replace(/π/g, 'pi');
+      cleanSol = normalizeForMathJs(cleanSol);
 
       if (/k/.test(cleanSol)) {
         [0, 1].forEach((kVal) => {
           const testExpr = cleanSol.replace(/k/g, `(${kVal})`);
           try {
-            const leftResult = math.evaluate(leftSide.replace(/x/g, `(${testExpr})`));
-            const rightResult = math.evaluate(rightSide.replace(/x/g, `(${testExpr})`));
+            const leftEval = normalizeForMathJs(leftSide).replace(/x/g, `(${testExpr})`);
+            const rightEval = normalizeForMathJs(rightSide).replace(/x/g, `(${testExpr})`);
+            const leftResult = math.evaluate(leftEval);
+            const rightResult = math.evaluate(rightEval);
             verifications.push({
               solution: `x = ${cleanSol}, k=${kVal}`,
               solutionLatex: `x = ${toLatex(cleanSol)}, k=${kVal}`,
               leftSide: `${leftSide} → ${leftResult}`,
               rightSide: `${rightSide} → ${rightResult}`,
-              isCorrect: Math.abs(leftResult - rightResult) < 1e-10,
+              isCorrect: nearlyEqual(leftResult, rightResult),
             });
           } catch (err) {
             verifications.push({
@@ -84,14 +152,16 @@ const verifyEquationSolution = (leftSide, rightSide, solutions) => {
           }
         });
       } else {
-        const leftResult = math.evaluate(leftSide.replace(/x/g, `(${cleanSol})`));
-        const rightResult = math.evaluate(rightSide.replace(/x/g, `(${cleanSol})`));
+        const leftEval = normalizeForMathJs(leftSide).replace(/x/g, `(${cleanSol})`);
+        const rightEval = normalizeForMathJs(rightSide).replace(/x/g, `(${cleanSol})`);
+        const leftResult = math.evaluate(leftEval);
+        const rightResult = math.evaluate(rightEval);
         verifications.push({
           solution: `x = ${cleanSol}`,
           solutionLatex: `x = ${toLatex(cleanSol)}`,
           leftSide: `${leftSide} → ${leftResult}`,
           rightSide: `${rightSide} → ${rightResult}`,
-          isCorrect: Math.abs(leftResult - rightResult) < 1e-10,
+          isCorrect: nearlyEqual(leftResult, rightResult),
         });
       }
     } catch (error) {

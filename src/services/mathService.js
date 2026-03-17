@@ -1,9 +1,37 @@
-const { parseInput, determineFormulaType, handleSpecialFormulas } = require('./mathHelpers');
+const { parseInput, determineFormulaType, handleSpecialFormulas, toLatex } = require('./mathHelpers');
 const { solveEquation } = require('./equationService');
 const { evaluateExpression } = require('./expressionService');
 const { solveDerivative, solveIntegral } = require('./calculusService');
 
+const solutionCache = new Map();
+const SOLUTION_CACHE_MAX = 200;
+const SOLUTION_CACHE_TTL_MS = 60_000;
+const getCachedSolution = (key) => {
+  const hit = solutionCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt < Date.now()) {
+    solutionCache.delete(key);
+    return null;
+  }
+  // refresh LRU-ish
+  solutionCache.delete(key);
+  solutionCache.set(key, hit);
+  return hit.value;
+};
+const setCachedSolution = (key, value) => {
+  solutionCache.set(key, { value, expiresAt: Date.now() + SOLUTION_CACHE_TTL_MS });
+  if (solutionCache.size > SOLUTION_CACHE_MAX) {
+    const firstKey = solutionCache.keys().next().value;
+    if (firstKey !== undefined) solutionCache.delete(firstKey);
+  }
+};
+
 const generateStepByStepSolution = async (formula) => {
+  const cached = getCachedSolution(formula);
+  if (cached) {
+    return JSON.parse(JSON.stringify(cached));
+  }
+
   const originalFormula = formula;
 
   let parsed = parseInput(formula)
@@ -12,11 +40,15 @@ const generateStepByStepSolution = async (formula) => {
     .replace(/\\sqrt\s*\(/g, 'sqrt(')
     .replace(/\{([^}]+)\}/g, '($1)');
 
+  const parsedFormulaText = parsed;
+  const parsedFormulaLatex = toLatex(parsedFormulaText);
+
   const special = handleSpecialFormulas(formula);
   if (special) {
     return {
       originalFormula,
-      parsedFormula: parsed,
+      parsedFormula: parsedFormulaLatex,
+      parsedFormulaText,
       steps: [],
       finalAnswer: 'Special Formula',
       finalAnswerLatex: special,
@@ -28,27 +60,54 @@ const generateStepByStepSolution = async (formula) => {
 
   let solution = {
     originalFormula,
-    parsedFormula: parsed,
+    parsedFormula: parsedFormulaLatex,
+    parsedFormulaText,
     steps: [],
     finalAnswer: null,
     finalAnswerLatex: null,
     verification: null,
     explanation: '',
-    type: determineFormulaType(parsed),
+    type: determineFormulaType(parsedFormulaText),
+  };
+
+  const looksLikeBarePolynomialInX = (text) => {
+    if (!text || typeof text !== 'string') return false;
+    if (text.includes('=')) return false;
+    if (!/[xX]/.test(text)) return false;
+    // Avoid calculus / trig / logs / roots / other function-style inputs
+    if (/(d\/dx|∫|integral|sin|cos|tan|asin|acos|atan|log|ln|sqrt)/i.test(text)) return false;
+    // Basic sanity: only allow typical polynomial characters
+    if (!/^[0-9xX+\-*/^().\s]+$/.test(text)) return false;
+    return true;
   };
 
   if (solution.type === 'equation') {
-    solution = await solveEquation(parsed, solution);
+    solution = await solveEquation(parsedFormulaText, solution);
   } else if (solution.type === 'expression') {
-    solution = await evaluateExpression(parsed, solution);
+    if (looksLikeBarePolynomialInX(parsedFormulaText)) {
+      solution.type = 'equation';
+      solution.explanation =
+        'This looks like a polynomial in x. I will solve for the roots by setting it equal to 0.';
+      solution.steps.push({
+        step: solution.steps.length + 1,
+        description: 'Interpret as equation',
+        expression: `${parsedFormulaText} = 0`,
+        expressionLatex: `${toLatex(parsedFormulaText)} = 0`,
+        explanation: 'Polynomials are solved by finding x such that the expression equals 0.',
+      });
+      solution = await solveEquation(`${parsedFormulaText} = 0`, solution);
+    } else {
+      solution = await evaluateExpression(parsedFormulaText, solution);
+    }
   } else if (solution.type === 'derivative') {
-    solution = await solveDerivative(parsed, solution);
+    solution = await solveDerivative(parsedFormulaText, solution);
   } else if (solution.type === 'integral') {
-    solution = await solveIntegral(parsed, solution);
+    solution = await solveIntegral(parsedFormulaText, solution);
   } else {
     throw new Error('Unsupported formula type.');
   }
 
+  setCachedSolution(formula, solution);
   return solution;
 };
 
@@ -59,7 +118,8 @@ const classifyFormula = (formula) => {
 
   return {
     originalFormula: formula,
-    parsedFormula,
+    parsedFormula: toLatex(parsedFormula),
+    parsedFormulaText: parsedFormula,
     type,
     isSpecial: Boolean(specialLatex),
   };
@@ -94,6 +154,10 @@ const validateFormula = async (formula) => {
 };
 
 const solveByType = async (formula, expectedType) => {
+  const cacheKey = `type:${expectedType}:${formula}`;
+  const cached = getCachedSolution(cacheKey);
+  if (cached) return JSON.parse(JSON.stringify(cached));
+
   const parsedFormula = parseInput(formula)
     .replace(/√\(/g, 'sqrt(')
     .replace(/\\sqrt\{([^}]+)\}/g, 'sqrt($1)')
@@ -108,7 +172,8 @@ const solveByType = async (formula, expectedType) => {
 
   let solution = {
     originalFormula: formula,
-    parsedFormula: parsedFormula,
+    parsedFormula: toLatex(parsedFormula),
+    parsedFormulaText: parsedFormula,
     steps: [],
     finalAnswer: null,
     finalAnswerLatex: null,
@@ -129,7 +194,8 @@ const solveByType = async (formula, expectedType) => {
     throw new Error('Unsupported formula type.');
   }
 
-  return solution;
+  setCachedSolution(cacheKey, solution);
+  return JSON.parse(JSON.stringify(solution));
 };
 
 const solveBatch = async (formulas) => {

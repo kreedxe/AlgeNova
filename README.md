@@ -24,7 +24,7 @@ npm install
 
 Create/update environment variables:
 
-- Create `.env` in project root (already included in this repo for local dev):
+- Create `.env` in project root (do **not** commit it; use `.env.example` as a template):
 
 ```bash
 NODE_ENV=development
@@ -46,7 +46,8 @@ npm start
 ## NPM scripts
 
 - **`npm start`**: starts server via `node src/server.js`
-- **`npm run dev`**: starts server via `node src/server.js` (same as start, adjust to nodemon if you prefer auto-reload)
+- **`npm run dev`**: starts server via `nodemon src/server.js` (auto-restart)
+- **`npm test`**: runs a small smoke test suite (`test/smoke.js`)
 
 ## Project structure
 
@@ -79,7 +80,7 @@ npm start
 
 By default the server listens on:
 
-- `http://localhost:3000`
+- `http://localhost:3000` (or whatever `PORT` is set to)
 
 ## Response conventions
 
@@ -88,7 +89,7 @@ By default the server listens on:
 For errors, responses are JSON:
 
 ```json
-{ "error": "Not Found" }
+{ "error": "Not Found", "requestId": "..." }
 ```
 
 Status codes and headers:
@@ -180,7 +181,8 @@ General solver. Detects the formula type (equation, expression, derivative, inte
 ```json
 {
   "originalFormula": "2x + 5 = 13",
-  "parsedFormula": "(2x + 5) = 13",
+  "parsedFormula": "\\left(2\\cdot x+5\\right) = 13",
+  "parsedFormulaText": "2x + 5 = 13",
   "type": "equation",
   "explanation": "…",
   "steps": [
@@ -262,12 +264,37 @@ Validate and classify a formula without relying on the frontend to parse it.
 ```json
 {
   "originalFormula": "2x + 5 = 13",
-  "parsedFormula": "2x + 5 = 13",
+  "parsedFormula": "2\\cdot x+5 = 13",
+  "parsedFormulaText": "2x + 5 = 13",
   "type": "equation",
   "isSpecial": false,
   "valid": true,
   "error": null
 }
+```
+
+## Notes on math output
+
+- **`parsedFormula` is LaTeX**: use it directly in the frontend renderer.
+- **`parsedFormulaText` is the normalized plain-text form** used internally by the solver.
+- **Polynomials without `= 0`** (e.g. `x^3 + 2x^2 - 5`) are interpreted as `= 0` automatically.
+- **Polynomial roots (degree ≥ 3)**: the API may return complex roots (with `i`). Verification supports complex numbers.
+
+## Deployment
+
+### Docker
+
+Build and run:
+
+```bash
+docker build -t algenova-backend .
+docker run --rm -p 3000:3000 -e PORT=3000 algenova-backend
+```
+
+Health check:
+
+```bash
+curl http://localhost:3000/health
 ```
 
 #### `POST /api/math/solve/batch`
