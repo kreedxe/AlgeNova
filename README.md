@@ -29,6 +29,15 @@ Create/update environment variables:
 ```bash
 NODE_ENV=development
 PORT=3000
+TRUST_PROXY=1
+
+# Global rate limit (all routes)
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=300
+
+# Stricter rate limit for /api/math routes
+MATH_RATE_LIMIT_WINDOW_MS=60000
+MATH_RATE_LIMIT_MAX=60
 ```
 
 Run in development (auto-restart):
@@ -98,6 +107,7 @@ Status codes and headers:
 - `400` for invalid input on endpoints like math solver
 - `500` for unexpected server errors
 - Every response includes `X-Request-Id` and `X-Response-Time-ms` headers for tracing.
+- Basic burst protection is enabled via rate limiting (see env vars above).
 
 ## Endpoints
 
