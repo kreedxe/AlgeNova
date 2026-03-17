@@ -1,9 +1,11 @@
+const { normalizeNaturalLanguage } = require('./naturalLanguage');
+
 function parseInput(input) {
   if (!input || typeof input !== 'string') {
     return '';
   }
 
-  let value = input.trim();
+  let value = normalizeNaturalLanguage(input).trim();
 
   // Strip common LaTeX delimiters and spacing commands
   value = value.replace(/^\$+|\$+$/g, '');

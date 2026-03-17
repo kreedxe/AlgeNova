@@ -166,6 +166,7 @@ Returns supported operations and example inputs.
   ],
   "examples": [
     { "type": "Linear Equation", "input": "2x + 5 = 13" },
+    { "type": "Natural Language", "input": "two x plus five equals thirteen" },
     { "type": "Quadratic Equation", "input": "x^2 - 4 = 0" },
     { "type": "Square Root Equation", "input": "sqrt(x+4) = 6" },
     { "type": "Logarithmic Equation", "input": "log(x) = 2" },

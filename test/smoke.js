@@ -31,6 +31,13 @@ async function run() {
     assert.ok(typeof res.finalAnswer === 'string' && res.finalAnswer.includes('+ C'));
   }
 
+  {
+    const res = await generateStepByStepSolution('two x plus five equals thirteen');
+    assert.strictEqual(res.type, 'equation');
+    assert.ok(Array.isArray(res.finalAnswer));
+    assert.ok(res.finalAnswer.includes('x = 4'));
+  }
+
   console.log('smoke tests passed');
 }
 
