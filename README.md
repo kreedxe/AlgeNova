@@ -308,6 +308,30 @@ Health check:
 curl http://localhost:3000/health
 ```
 
+### Render
+
+This repo includes [`render.yaml`](/Users/kreedxe/Source/AlgeNova/render.yaml) for a native Node web service deploy on Render.
+
+Render settings:
+
+- **Build command**: `npm ci`
+- **Start command**: `npm start`
+- **Health check path**: `/health/ready`
+- **Node version**: `20` via [`render.yaml`](/Users/kreedxe/Source/AlgeNova/render.yaml) and [`.node-version`](/Users/kreedxe/Source/AlgeNova/.node-version)
+
+Recommended deploy flow:
+
+1. Push this repository to GitHub.
+2. In Render, create a new Web Service from the repo.
+3. Let Render detect [`render.yaml`](/Users/kreedxe/Source/AlgeNova/render.yaml).
+4. Confirm the service uses the included env defaults, then deploy.
+
+Notes:
+
+- Render injects `PORT`; the server already honors it.
+- `TRUST_PROXY=1` is enabled for reverse-proxy-aware rate limiting.
+- No self-ping is required on Render; keep-alive only runs when `KEEPALIVE_URL` is explicitly set.
+
 #### `POST /api/math/solve/batch`
 
 Solve multiple formulas in a single request.

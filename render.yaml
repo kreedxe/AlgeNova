@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: algenova-backend
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health/ready
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20
+      - key: TRUST_PROXY
+        value: 1
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: RATE_LIMIT_MAX
+        value: 300
+      - key: MATH_RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: MATH_RATE_LIMIT_MAX
+        value: 60

@@ -58,8 +58,28 @@ app.use(
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   logger.info(`Server listening on http://localhost:${port}`, { env });
   startKeepAlive();
 });
 
+function shutdown(signal) {
+  logger.info(`Received ${signal}, shutting down gracefully.`);
+  server.close((err) => {
+    if (err) {
+      logger.error('Failed to shut down cleanly.', { signal, error: err.message });
+      process.exit(1);
+    }
+
+    logger.info('HTTP server closed.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+module.exports = {
+  app,
+  server,
+};

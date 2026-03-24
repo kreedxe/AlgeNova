@@ -1,13 +1,9 @@
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-export function startKeepAlive() {
-  // Prefer an explicit keep-alive URL if provided
+function startKeepAlive() {
+  // Only enable keep-alive when an explicit target is configured.
   const explicitUrl = process.env.KEEPALIVE_URL;
-  const renderExternal = process.env.RENDER_EXTERNAL_URL;
-
-  const baseUrl = explicitUrl ?? (renderExternal ? `${renderExternal}/ping` : undefined);
-
-  if (!baseUrl) {
+  if (!explicitUrl) {
     return;
   }
 
@@ -15,16 +11,22 @@ export function startKeepAlive() {
 
   const ping = async () => {
     try {
-      await fetch(baseUrl, { method: "GET" });
+      await fetch(explicitUrl, { method: 'GET' });
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error("Keep-alive ping failed", err);
+      console.error('Keep-alive ping failed', err);
     }
   };
 
   // Initial ping (after small delay to let server start)
-  setTimeout(ping, 10_000);
+  const initialTimer = setTimeout(ping, 10_000);
+  initialTimer.unref();
 
   // Periodic pings
-  setInterval(ping, interval);
+  const intervalTimer = setInterval(ping, interval);
+  intervalTimer.unref();
 }
+
+module.exports = {
+  startKeepAlive,
+};
