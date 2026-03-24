@@ -9,6 +9,7 @@ const mathRoutes = require('./routes/mathRoutes');
 const requestContext = require('./middlewares/requestContext');
 const notFound = require('./middlewares/notFound');
 const errorHandler = require('./middlewares/errorHandler');
+const { startKeepAlive } = require('./utils/keepAlive');
 
 const app = express();
 
@@ -27,5 +28,6 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   logger.info(`Server listening on http://localhost:${port}`, { env });
+  startKeepAlive();
 });
 
