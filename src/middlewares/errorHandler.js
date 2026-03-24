@@ -1,4 +1,5 @@
 const logger = require('../logger');
+const { env } = require('../config');
 
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
@@ -11,9 +12,14 @@ function errorHandler(err, req, res, next) {
     stack: err.stack,
   });
 
-  res.status(status).json({
+  const payload = {
     error: err.message || 'Internal Server Error',
-  });
+    requestId: req.requestId,
+  };
+  if (env !== 'production' && status >= 500) {
+    payload.stack = err.stack;
+  }
+  res.status(status).json(payload);
 }
 
 module.exports = errorHandler;

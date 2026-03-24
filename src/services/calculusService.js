@@ -59,7 +59,7 @@ const solveIntegral = async (formula, solution) => {
         step: 2,
         description: 'Integration by parts',
         expression: `u = ${poly}, dv = ${trig}(x) dx`,
-        expressionLatex: `u=${toLatex(poly)}, dv=${trig}(x) dx`,
+        expressionLatex: `u = ${toLatex(poly)},\\; dv = ${toLatex(`${trig}(x)`)}\\,dx`,
         explanation: 'Choose u as the polynomial and dv as trig function.',
       });
 
@@ -80,7 +80,7 @@ const solveIntegral = async (formula, solution) => {
         expression: `∫ ${poly}*${trig}(x) dx = ${poly}*${v} - ∫ ${v}*(${du}) dx`,
         expressionLatex: `\\int ${toLatex(poly)} ${trig}(x) dx = ${toLatex(
           poly,
-        )}${toLatex(v)} - \\int ${toLatex(v)}${toLatex(du)} dx`,
+        )}${toLatex(v)} - \\int ${toLatex(v)}\\cdot ${toLatex(du)}\\,dx`,
         explanation: 'Applying integration by parts formula.',
       });
     }

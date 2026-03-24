@@ -10,6 +10,164 @@ const {
   toLatex,
 } = require('./mathHelpers');
 
+const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution }) => {
+  try {
+    const degree = nerdamer(`deg(${simplified}, x)`).toString();
+    if (degree !== '2') return null;
+
+    const coeffsRaw = nerdamer(`coeffs(${simplified}, x)`).toString(); // [c,b,a]
+    const coeffs = coeffsRaw
+      .replace(/^\[/, '')
+      .replace(/\]$/, '')
+      .split(',')
+      .map((s) => cleanOutput(stripBrackets(s)))
+      .filter(Boolean);
+    if (coeffs.length !== 3) return null;
+
+    const [c, b, a] = coeffs;
+    const aSimplified = nerdamer(`simplify(${a})`).toString();
+    if (aSimplified === '0') return null;
+
+    addStep(
+      solution.steps,
+      'Recognize quadratic form',
+      `${simplified} = 0`,
+      'The simplified equation is a quadratic polynomial in x (degree 2).',
+    );
+    addStep(
+      solution.steps,
+      'Identify coefficients',
+      `a = ${a}, b = ${b}, c = ${c}`,
+      'Match the polynomial to ax^2 + bx + c = 0.',
+    );
+
+    const discriminant = cleanOutput(nerdamer(`simplify((${b})^2 - 4*(${a})*(${c}))`).toString());
+    addStep(
+      solution.steps,
+      'Compute discriminant',
+      `Δ = b^2 - 4ac = ${discriminant}`,
+      'Use the discriminant to determine the roots.',
+    );
+
+    const rootPlus = cleanOutput(
+      nerdamer(`simplify((-((${b})) + sqrt(${discriminant}))/(2*(${a})))`).toString(),
+    );
+    const rootMinus = cleanOutput(
+      nerdamer(`simplify((-((${b})) - sqrt(${discriminant}))/(2*(${a})))`).toString(),
+    );
+
+    addStep(
+      solution.steps,
+      'Apply quadratic formula',
+      `x = (-b ± √Δ) / (2a)`,
+      'Quadratic formula gives up to two solutions.',
+    );
+
+    addStep(
+      solution.steps,
+      'Solve for x (plus)',
+      `x₁ = (-b + √Δ) / (2a) = ${rootPlus}`,
+      'Substitute the +√Δ branch into the quadratic formula.',
+    );
+
+    addStep(
+      solution.steps,
+      'Solve for x (minus)',
+      `x₂ = (-b - √Δ) / (2a) = ${rootMinus}`,
+      'Substitute the -√Δ branch into the quadratic formula.',
+    );
+
+    const roots = [rootPlus, rootMinus].filter((v, i, arr) => arr.indexOf(v) === i);
+    const answers = roots.map((r) => `x = ${r}`);
+
+    addStep(
+      solution.steps,
+      'Solutions',
+      answers.join('  OR  '),
+      'List the solution set for the quadratic equation.',
+    );
+
+    const factored = nerdamer(`factor(${simplified})`).toString();
+    if (factored && factored !== simplified) {
+      addStep(
+        solution.steps,
+        'Optional check (factoring)',
+        factored,
+        'Factoring can confirm the same roots when the polynomial is factorable.',
+      );
+    }
+
+    return {
+      finalAnswer: answers,
+      finalAnswerLatex: roots.map((r) => `x = ${toLatex(r)}`),
+      verification: verifyEquationSolution(leftSide, rightSide, roots),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
+  try {
+    const degreeStr = nerdamer(`deg(${simplified}, x)`).toString();
+    if (!/^\d+$/.test(degreeStr)) return null;
+    const degree = Number(degreeStr);
+    if (!Number.isFinite(degree) || degree < 3) return null;
+
+    addStep(
+      solution.steps,
+      'Recognize polynomial form',
+      `${simplified} = 0`,
+      `The simplified equation is a polynomial in x of degree ${degree}.`,
+    );
+
+    const factored = nerdamer(`factor(${simplified})`).toString();
+    // Only show factoring when it meaningfully factors (typically introduces parentheses / products).
+    if (factored && factored !== simplified && /[()]/.test(factored)) {
+      addStep(
+        solution.steps,
+        'Factor polynomial',
+        factored,
+        'Factor the polynomial to make its roots easier to find.',
+      );
+    }
+
+    const nerdRoots = nerdamer(`roots(${simplified}, x)`).toString();
+    const roots = nerdRoots
+      .replace(/^[[]|[]]$/g, '')
+      .split(',')
+      .map((s) => cleanOutput(stripBrackets(s)))
+      .filter((s) => s.length > 0);
+
+    if (roots.length === 0) return null;
+
+    roots.forEach((r, idx) => {
+      addStep(
+        solution.steps,
+        `Solve for x (root ${idx + 1})`,
+        `x${roots.length > 1 ? `_${idx + 1}` : ''} = ${r}`,
+        'Root obtained from solving the polynomial equation.',
+      );
+    });
+
+    const answers = roots.map((r) => `x = ${r}`);
+    addStep(
+      solution.steps,
+      'Solutions',
+      answers.join('  OR  '),
+      'List the solution set for the polynomial equation.',
+    );
+
+    return {
+      finalAnswer: answers,
+      finalAnswerLatex: roots.map((r) => `x = ${toLatex(r)}`),
+      verification: verifyEquationSolution(leftSide, rightSide, roots),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const solveEquation = async (formula, solution) => {
   solution.explanation =
     'This is an algebraic or transcendental equation. I will solve for the unknown variable by isolating it on one side.';
@@ -147,6 +305,32 @@ const solveEquation = async (formula, solution) => {
         simplified,
         'Simplify the left-hand side after moving terms.',
       );
+
+      const quadraticResult = trySolveQuadratic({
+        simplified,
+        leftSide,
+        rightSide,
+        solution,
+      });
+      if (quadraticResult) {
+        solution.finalAnswer = quadraticResult.finalAnswer;
+        solution.finalAnswerLatex = quadraticResult.finalAnswerLatex;
+        solution.verification = quadraticResult.verification;
+        return solution;
+      }
+
+      const polyResult = trySolvePolynomial({
+        simplified,
+        leftSide,
+        rightSide,
+        solution,
+      });
+      if (polyResult) {
+        solution.finalAnswer = polyResult.finalAnswer;
+        solution.finalAnswerLatex = polyResult.finalAnswerLatex;
+        solution.verification = polyResult.verification;
+        return solution;
+      }
 
       let answers = [];
       try {
