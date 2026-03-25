@@ -60,7 +60,7 @@ app.use(errorHandler);
 
 const server = app.listen(port, () => {
   logger.info(`Server listening on http://localhost:${port}`, { env });
-  startKeepAlive();
+  //startKeepAlive();
 });
 
 function shutdown(signal) {
