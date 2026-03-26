@@ -8,14 +8,15 @@ const {
   addStep,
   verifyEquationSolution,
   toLatex,
+  detectPrimaryVariable,
 } = require('./mathHelpers');
 
-const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution }) => {
+const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution, variable }) => {
   try {
-    const degree = nerdamer(`deg(${simplified}, x)`).toString();
+    const degree = nerdamer(`deg(${simplified}, ${variable})`).toString();
     if (degree !== '2') return null;
 
-    const coeffsRaw = nerdamer(`coeffs(${simplified}, x)`).toString(); // [c,b,a]
+    const coeffsRaw = nerdamer(`coeffs(${simplified}, ${variable})`).toString(); // [c,b,a]
     const coeffs = coeffsRaw
       .replace(/^\[/, '')
       .replace(/\]$/, '')
@@ -32,13 +33,13 @@ const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution }) => {
       solution.steps,
       'Recognize quadratic form',
       `${simplified} = 0`,
-      'The simplified equation is a quadratic polynomial in x (degree 2).',
+      `The simplified equation is a quadratic polynomial in ${variable} (degree 2).`,
     );
     addStep(
       solution.steps,
       'Identify coefficients',
       `a = ${a}, b = ${b}, c = ${c}`,
-      'Match the polynomial to ax^2 + bx + c = 0.',
+      'Match the polynomial to a·v^2 + b·v + c = 0 (where v is the variable).',
     );
 
     const discriminant = cleanOutput(nerdamer(`simplify((${b})^2 - 4*(${a})*(${c}))`).toString());
@@ -59,26 +60,26 @@ const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution }) => {
     addStep(
       solution.steps,
       'Apply quadratic formula',
-      `x = (-b ± √Δ) / (2a)`,
+      `${variable} = (-b ± √Δ) / (2a)`,
       'Quadratic formula gives up to two solutions.',
     );
 
     addStep(
       solution.steps,
-      'Solve for x (plus)',
-      `x₁ = (-b + √Δ) / (2a) = ${rootPlus}`,
+      `Solve for ${variable} (plus)`,
+      `${variable}₁ = (-b + √Δ) / (2a) = ${rootPlus}`,
       'Substitute the +√Δ branch into the quadratic formula.',
     );
 
     addStep(
       solution.steps,
-      'Solve for x (minus)',
-      `x₂ = (-b - √Δ) / (2a) = ${rootMinus}`,
+      `Solve for ${variable} (minus)`,
+      `${variable}₂ = (-b - √Δ) / (2a) = ${rootMinus}`,
       'Substitute the -√Δ branch into the quadratic formula.',
     );
 
     const roots = [rootPlus, rootMinus].filter((v, i, arr) => arr.indexOf(v) === i);
-    const answers = roots.map((r) => `x = ${r}`);
+    const answers = roots.map((r) => `${variable} = ${r}`);
 
     addStep(
       solution.steps,
@@ -99,17 +100,17 @@ const trySolveQuadratic = ({ simplified, leftSide, rightSide, solution }) => {
 
     return {
       finalAnswer: answers,
-      finalAnswerLatex: roots.map((r) => `x = ${toLatex(r)}`),
-      verification: verifyEquationSolution(leftSide, rightSide, roots),
+      finalAnswerLatex: roots.map((r) => `${variable} = ${toLatex(r)}`),
+      verification: verifyEquationSolution(leftSide, rightSide, roots, variable),
     };
   } catch {
     return null;
   }
 };
 
-const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
+const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution, variable }) => {
   try {
-    const degreeStr = nerdamer(`deg(${simplified}, x)`).toString();
+    const degreeStr = nerdamer(`deg(${simplified}, ${variable})`).toString();
     if (!/^\d+$/.test(degreeStr)) return null;
     const degree = Number(degreeStr);
     if (!Number.isFinite(degree) || degree < 3) return null;
@@ -118,7 +119,7 @@ const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
       solution.steps,
       'Recognize polynomial form',
       `${simplified} = 0`,
-      `The simplified equation is a polynomial in x of degree ${degree}.`,
+      `The simplified equation is a polynomial in ${variable} of degree ${degree}.`,
     );
 
     const factored = nerdamer(`factor(${simplified})`).toString();
@@ -132,7 +133,7 @@ const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
       );
     }
 
-    const nerdRoots = nerdamer(`roots(${simplified}, x)`).toString();
+    const nerdRoots = nerdamer(`roots(${simplified}, ${variable})`).toString();
     const roots = nerdRoots
       .replace(/^[[]|[]]$/g, '')
       .split(',')
@@ -144,13 +145,13 @@ const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
     roots.forEach((r, idx) => {
       addStep(
         solution.steps,
-        `Solve for x (root ${idx + 1})`,
-        `x${roots.length > 1 ? `_${idx + 1}` : ''} = ${r}`,
+        `Solve for ${variable} (root ${idx + 1})`,
+        `${variable}${roots.length > 1 ? `_${idx + 1}` : ''} = ${r}`,
         'Root obtained from solving the polynomial equation.',
       );
     });
 
-    const answers = roots.map((r) => `x = ${r}`);
+    const answers = roots.map((r) => `${variable} = ${r}`);
     addStep(
       solution.steps,
       'Solutions',
@@ -160,8 +161,8 @@ const trySolvePolynomial = ({ simplified, leftSide, rightSide, solution }) => {
 
     return {
       finalAnswer: answers,
-      finalAnswerLatex: roots.map((r) => `x = ${toLatex(r)}`),
-      verification: verifyEquationSolution(leftSide, rightSide, roots),
+      finalAnswerLatex: roots.map((r) => `${variable} = ${toLatex(r)}`),
+      verification: verifyEquationSolution(leftSide, rightSide, roots, variable),
     };
   } catch {
     return null;
@@ -172,6 +173,7 @@ const solveEquation = async (formula, solution) => {
   solution.explanation =
     'This is an algebraic or transcendental equation. I will solve for the unknown variable by isolating it on one side.';
   try {
+    const variable = detectPrimaryVariable(formula);
     if (formula.includes('±')) {
       const plusVersion = formula.replace('±', '+');
       const minusVersion = formula.replace('±', '-');
@@ -223,7 +225,10 @@ const solveEquation = async (formula, solution) => {
       solution.verification = verifyEquationSolution(
         formula.split('=')[0].trim(),
         formula.split('=')[1] ? formula.split('=')[1].trim() : '0',
-        solution.finalAnswer.map((a) => a.replace(/^x\s*=\s*/, '').trim()),
+        solution.finalAnswer.map((a) =>
+          a.replace(new RegExp(`^\\s*${variable}\\s*=\\s*`), '').trim(),
+        ),
+        variable,
       );
 
       return solution;
@@ -274,16 +279,17 @@ const solveEquation = async (formula, solution) => {
         solution.steps,
         'Apply inverse trig',
         answers.join('  OR  '),
-        'Applied inverse trigonometric identities to isolate x.',
+        `Applied inverse trigonometric identities to isolate ${variable}.`,
       );
 
-      solution.finalAnswer = answers.map((a) => `x = ${a}`);
+      solution.finalAnswer = answers.map((a) => `${variable} = ${a}`);
       solution.finalAnswerLatex = solution.finalAnswer.map((a) => toLatex(a));
 
       solution.verification = verifyEquationSolution(
         leftSide,
         rightSide,
-        solution.finalAnswer.map((a) => a.replace(/^x\s*=\s*/, '')),
+        solution.finalAnswer.map((a) => a.replace(new RegExp(`^\\s*${variable}\\s*=\\s*`), '')),
+        variable,
       );
 
       return solution;
@@ -311,6 +317,7 @@ const solveEquation = async (formula, solution) => {
         leftSide,
         rightSide,
         solution,
+        variable,
       });
       if (quadraticResult) {
         solution.finalAnswer = quadraticResult.finalAnswer;
@@ -324,6 +331,7 @@ const solveEquation = async (formula, solution) => {
         leftSide,
         rightSide,
         solution,
+        variable,
       });
       if (polyResult) {
         solution.finalAnswer = polyResult.finalAnswer;
@@ -343,14 +351,14 @@ const solveEquation = async (formula, solution) => {
             'Factor the polynomial to find roots.',
           );
         }
-        const nerdSolution = nerdamer(`solve(${simplified}, x)`).toString();
+        const nerdSolution = nerdamer(`solve(${simplified}, ${variable})`).toString();
         answers = nerdSolution
           .replace(/^[[]|[]]$/g, '')
           .split(',')
           .map((s) => cleanOutput(stripBrackets(s)))
           .filter((s) => s.length > 0);
       } catch (innerErr) {
-        const nerdSolution2 = nerdamer(`solve((${leftSide})-(${rightSide}), x)`).toString();
+        const nerdSolution2 = nerdamer(`solve((${leftSide})-(${rightSide}), ${variable})`).toString();
         answers = nerdSolution2
           .replace(/^[[]|[]]$/g, '')
           .split(',')
@@ -361,7 +369,7 @@ const solveEquation = async (formula, solution) => {
       if (answers.length === 0) {
         const numeric = (() => {
           try {
-            const sol = nerdamer(`solve((${leftSide})-(${rightSide}), x)`).toString();
+            const sol = nerdamer(`solve((${leftSide})-(${rightSide}), ${variable})`).toString();
             return sol;
           } catch (e) {
             return null;
@@ -371,21 +379,22 @@ const solveEquation = async (formula, solution) => {
           answers = numeric
             .replace(/^[[]|[]]$/g, '')
             .split(',')
-            .map((s) => cleanOutput(stripBrackets(s)));
+            .map((s) => cleanOutput(stripBrackets(s)))
+            .filter((s) => s.length > 0);
         }
       }
 
-      solution.finalAnswer = answers.map((a) => `x = ${a}`);
-      solution.finalAnswerLatex = answers.map((a) => `x = ${toLatex(a)}`);
+      solution.finalAnswer = answers.map((a) => `${variable} = ${a}`);
+      solution.finalAnswerLatex = answers.map((a) => `${variable} = ${toLatex(a)}`);
 
       addStep(
         solution.steps,
-        'Solve for x',
+        `Solve for ${variable}`,
         solution.finalAnswer.join('  OR  '),
         'Compute roots/solutions from factorization or algebraic solve.',
       );
 
-      solution.verification = verifyEquationSolution(leftSide, rightSide, answers);
+      solution.verification = verifyEquationSolution(leftSide, rightSide, answers, variable);
     } catch (error) {
       addStep(
         solution.steps,
@@ -393,22 +402,22 @@ const solveEquation = async (formula, solution) => {
         'Using nerdamer solve as fallback',
         `Fallback due to: ${error.message}`,
       );
-      const nerdSolution = nerdamer(`solve((${leftSide})-(${rightSide}), x)`).toString();
+      const nerdSolution = nerdamer(`solve((${leftSide})-(${rightSide}), ${variable})`).toString();
       const answers = nerdSolution
         .replace(/^[[]|[]]$/g, '')
         .split(',')
         .map((s) => cleanOutput(stripBrackets(s)))
         .filter((s) => s.length > 0);
 
-      solution.finalAnswer = answers.map((a) => `x = ${a}`);
-      solution.finalAnswerLatex = answers.map((a) => `x = ${toLatex(a)}`);
+      solution.finalAnswer = answers.map((a) => `${variable} = ${a}`);
+      solution.finalAnswerLatex = answers.map((a) => `${variable} = ${toLatex(a)}`);
       addStep(
         solution.steps,
         'Final (fallback) solution',
         solution.finalAnswer.join('  OR  '),
         'Final answers from fallback solver.',
       );
-      solution.verification = verifyEquationSolution(leftSide, rightSide, answers);
+      solution.verification = verifyEquationSolution(leftSide, rightSide, answers, variable);
     }
   } catch (error) {
     solution.steps.push({
@@ -427,4 +436,3 @@ const solveEquation = async (formula, solution) => {
 module.exports = {
   solveEquation,
 };
-

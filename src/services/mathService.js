@@ -70,30 +70,42 @@ const generateStepByStepSolution = async (formula) => {
     type: determineFormulaType(parsedFormulaText),
   };
 
-  const looksLikeBarePolynomialInX = (text) => {
+  const looksLikeBarePolynomialInSingleVar = (text) => {
     if (!text || typeof text !== 'string') return false;
     if (text.includes('=')) return false;
-    if (!/[xX]/.test(text)) return false;
+    // Must include at least one variable symbol.
+    if (!/[a-zA-Z]/.test(text)) return false;
     // Avoid calculus / trig / logs / roots / other function-style inputs
     if (/(d\/dx|∫|integral|sin|cos|tan|asin|acos|atan|log|ln|sqrt)/i.test(text)) return false;
     // Basic sanity: only allow typical polynomial characters
-    if (!/^[0-9xX+\-*/^().\s]+$/.test(text)) return false;
+    if (!/^[0-9a-zA-Z+\-*/^().\s]+$/.test(text)) return false;
+    // Only allow a single variable name (typically x or y).
+    const vars = new Set((text.match(/[a-zA-Z]+/g) || []).map((v) => v.toLowerCase()));
+    // Exclude function names/constants commonly seen in expressions.
+    ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'log', 'ln', 'sqrt', 'pi', 'e'].forEach((v) =>
+      vars.delete(v),
+    );
+    if (vars.size !== 1) return false;
     return true;
   };
 
   if (solution.type === 'equation') {
     solution = await solveEquation(parsedFormulaText, solution);
   } else if (solution.type === 'expression') {
-    if (looksLikeBarePolynomialInX(parsedFormulaText)) {
+    if (looksLikeBarePolynomialInSingleVar(parsedFormulaText)) {
+      const varMatch = (parsedFormulaText.match(/[a-zA-Z]+/g) || []).find((v) =>
+        !/^(sin|cos|tan|asin|acos|atan|log|ln|sqrt|pi|e)$/i.test(v),
+      );
+      const variable = varMatch || 'x';
       solution.type = 'equation';
       solution.explanation =
-        'This looks like a polynomial in x. I will solve for the roots by setting it equal to 0.';
+        `This looks like a polynomial in ${variable}. I will solve for the roots by setting it equal to 0.`;
       solution.steps.push({
         step: solution.steps.length + 1,
         description: 'Interpret as equation',
         expression: `${parsedFormulaText} = 0`,
         expressionLatex: `${toLatex(parsedFormulaText)} = 0`,
-        explanation: 'Polynomials are solved by finding x such that the expression equals 0.',
+        explanation: 'Polynomials are solved by finding the variable value such that the expression equals 0.',
       });
       solution = await solveEquation(`${parsedFormulaText} = 0`, solution);
     } else {
@@ -257,4 +269,3 @@ module.exports = {
   solveBatch,
   getMathHelpData,
 };
-

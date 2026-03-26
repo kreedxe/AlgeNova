@@ -66,6 +66,62 @@ const cleanOutput = (str) => str.replace(/\*/g, '').replace(/\s+/g, ' ').trim();
 
 const stripBrackets = (str) => (typeof str === 'string' ? str.replace(/\[|\]/g, '') : str);
 
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const detectPrimaryVariable = (expr) => {
+  if (!expr || typeof expr !== 'string') return 'x';
+  try {
+    const symbols = new Set();
+    const excluded = new Set([
+      // common functions
+      'sin',
+      'cos',
+      'tan',
+      'asin',
+      'acos',
+      'atan',
+      'log',
+      'ln',
+      'sqrt',
+      'abs',
+      // constants
+      'pi',
+      'e',
+      'i',
+    ]);
+
+    const collectFrom = (subExpr) => {
+      const node = math.parse(subExpr);
+      node.traverse((n, path, parent) => {
+        if (n && n.isSymbolNode) {
+          const name = n.name;
+          if (!name || excluded.has(name)) return;
+          // Exclude function names (mathjs represents the function name as a SymbolNode under FunctionNode.fn)
+          if (parent && parent.isFunctionNode && parent.fn === n) return;
+          symbols.add(name);
+        }
+      });
+    };
+
+    if (expr.includes('=')) {
+      const [lhs, rhs] = expr.split('=').map((s) => (s || '').trim());
+      if (lhs) collectFrom(lhs);
+      if (rhs) collectFrom(rhs);
+    } else {
+      collectFrom(expr);
+    }
+
+    const list = Array.from(symbols);
+    if (list.length === 0) return 'x';
+    if (list.length === 1) return list[0];
+    // Prefer x if present, otherwise return a stable choice.
+    if (symbols.has('x')) return 'x';
+    return list.sort()[0];
+  } catch {
+    return 'x';
+  }
+};
+
 const determineFormulaType = (formula) => {
   if (formula.includes('=') && !formula.includes('∫') && !formula.includes('d/dx')) {
     return 'equation';
@@ -98,7 +154,7 @@ const addStep = (steps, description, expression, explanation = '') => {
   });
 };
 
-const verifyEquationSolution = (leftSide, rightSide, solutions) => {
+const verifyEquationSolution = (leftSide, rightSide, solutions, variable = 'x') => {
   const verifications = [];
   const list = Array.isArray(solutions) ? solutions : [solutions];
 
@@ -125,49 +181,54 @@ const verifyEquationSolution = (leftSide, rightSide, solutions) => {
 
   list.forEach((sol) => {
     try {
-      let cleanSol = sol.replace(/^x\s*=\s*/, '').trim();
+      const varName = variable && typeof variable === 'string' ? variable : 'x';
+      const stripVarEq = new RegExp(`^\\s*${escapeRegExp(varName)}\\s*=\\s*`);
+      let cleanSol = sol.replace(stripVarEq, '').trim();
       cleanSol = normalizeForMathJs(cleanSol);
 
       if (/k/.test(cleanSol)) {
         [0, 1].forEach((kVal) => {
           const testExpr = cleanSol.replace(/k/g, `(${kVal})`);
           try {
-            const leftEval = normalizeForMathJs(leftSide).replace(/x/g, `(${testExpr})`);
-            const rightEval = normalizeForMathJs(rightSide).replace(/x/g, `(${testExpr})`);
+            const varRe = new RegExp(`\\b${escapeRegExp(varName)}\\b`, 'g');
+            const leftEval = normalizeForMathJs(leftSide).replace(varRe, `(${testExpr})`);
+            const rightEval = normalizeForMathJs(rightSide).replace(varRe, `(${testExpr})`);
             const leftResult = math.evaluate(leftEval);
             const rightResult = math.evaluate(rightEval);
             verifications.push({
-              solution: `x = ${cleanSol}, k=${kVal}`,
-              solutionLatex: `x = ${toLatex(cleanSol)}, k=${kVal}`,
+              solution: `${varName} = ${cleanSol}, k=${kVal}`,
+              solutionLatex: `${varName} = ${toLatex(cleanSol)}, k=${kVal}`,
               leftSide: `${leftSide} → ${leftResult}`,
               rightSide: `${rightSide} → ${rightResult}`,
               isCorrect: nearlyEqual(leftResult, rightResult),
             });
           } catch (err) {
             verifications.push({
-              solution: `x = ${cleanSol}, k=${kVal}`,
-              solutionLatex: `x = ${toLatex(cleanSol)}, k=${kVal}`,
+              solution: `${varName} = ${cleanSol}, k=${kVal}`,
+              solutionLatex: `${varName} = ${toLatex(cleanSol)}, k=${kVal}`,
               error: `Verification error: ${err.message}`,
             });
           }
         });
       } else {
-        const leftEval = normalizeForMathJs(leftSide).replace(/x/g, `(${cleanSol})`);
-        const rightEval = normalizeForMathJs(rightSide).replace(/x/g, `(${cleanSol})`);
+        const varRe = new RegExp(`\\b${escapeRegExp(varName)}\\b`, 'g');
+        const leftEval = normalizeForMathJs(leftSide).replace(varRe, `(${cleanSol})`);
+        const rightEval = normalizeForMathJs(rightSide).replace(varRe, `(${cleanSol})`);
         const leftResult = math.evaluate(leftEval);
         const rightResult = math.evaluate(rightEval);
         verifications.push({
-          solution: `x = ${cleanSol}`,
-          solutionLatex: `x = ${toLatex(cleanSol)}`,
+          solution: `${varName} = ${cleanSol}`,
+          solutionLatex: `${varName} = ${toLatex(cleanSol)}`,
           leftSide: `${leftSide} → ${leftResult}`,
           rightSide: `${rightSide} → ${rightResult}`,
           isCorrect: nearlyEqual(leftResult, rightResult),
         });
       }
     } catch (error) {
+      const varName = variable && typeof variable === 'string' ? variable : 'x';
       verifications.push({
-        solution: `x = ${sol}`,
-        solutionLatex: `x = ${toLatex(sol)}`,
+        solution: `${varName} = ${sol}`,
+        solutionLatex: `${varName} = ${toLatex(sol)}`,
         error: `Verification error: ${error.message}`,
       });
     }
@@ -214,9 +275,9 @@ module.exports = {
   toLatex,
   cleanOutput,
   stripBrackets,
+  detectPrimaryVariable,
   determineFormulaType,
   addStep,
   verifyEquationSolution,
   handleSpecialFormulas,
 };
-

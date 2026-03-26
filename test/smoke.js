@@ -4,6 +4,12 @@ const { generateStepByStepSolution } = require('../src/services/mathService');
 
 async function run() {
   {
+    const res = await generateStepByStepSolution('2+2');
+    assert.strictEqual(res.type, 'expression');
+    assert.strictEqual(res.finalAnswer, '4');
+  }
+
+  {
     const res = await generateStepByStepSolution('x^2 - 4x + 3 = 0');
     assert.strictEqual(res.type, 'equation');
     assert.ok(Array.isArray(res.steps) && res.steps.length > 0);
@@ -38,6 +44,13 @@ async function run() {
     assert.ok(res.finalAnswer.includes('x = 4'));
   }
 
+  {
+    const res = await generateStepByStepSolution('2y + 5 = 13');
+    assert.strictEqual(res.type, 'equation');
+    assert.ok(Array.isArray(res.finalAnswer));
+    assert.ok(res.finalAnswer.includes('y = 4'));
+  }
+
   console.log('smoke tests passed');
 }
 
@@ -45,4 +58,3 @@ run().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-
